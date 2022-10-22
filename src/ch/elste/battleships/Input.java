@@ -19,7 +19,7 @@ public class Input {
 		
 
 		Coordinate c1 = null, c2 = null;
-		return new Coordinate[] { c1, c2 };
+		throw new Error("unimplemented");
 	}
 
 	public Coordinate getCoordinate(String display) {
