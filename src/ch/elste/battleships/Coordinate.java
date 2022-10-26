@@ -26,7 +26,8 @@ public class Coordinate {
 	}
 
 	/**
-	 * Returns the Manhattan distance to the coordinate c.
+	 * Returns the Manhattan distance to the coordinate c. This is the mathematic
+	 * distance, i.e. exclusive {@code this coordinate}.
 	 * 
 	 * @param c the other coordinate
 	 * @return the Manhattan distance from this coordinate to the other.
@@ -45,5 +46,10 @@ public class Coordinate {
 
 	private int chrToNum(char c) {
 		return (int) (Character.toUpperCase(c) - 'A');
+	}
+
+	@Override
+	public String toString() {
+		return String.format("Coordinate(%d, %d)", x, y);
 	}
 }

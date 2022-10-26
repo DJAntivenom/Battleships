@@ -2,6 +2,8 @@ package ch.elste.battleships;
 
 import java.io.InputStream;
 
+import ch.elste.battleships.Exceptions.IllegalBoatSpecException;
+
 /**
  * The Game class ensures that the game plays out in the correct manner. It asks
  * the players for move, one after the other, and checks with the
@@ -41,12 +43,10 @@ public class Game implements Runnable {
 		if (initialized)
 			throw new IllegalStateException("Already initialized, but not run");
 
+		Output.clearScreen();
 		gs = gsf.getGameState(GRID_SIZE);
 		initialized = true;
-	}
-
-	private void showOutput(Player p) {
-		throw new Error("unimplemented");
+		Output.clearScreen();
 	}
 
 	/**
@@ -56,10 +56,24 @@ public class Game implements Runnable {
 	 * @return the coordinates of the fired shot.
 	 */
 	private Coordinate getNextShot(Player p) {
-		Coordinate shot = p.getNextShot();
-		while (!gs.isValid(shot, p.getPlayerNumber())) {
-			Output.println("This position was already shot", p);
+		Coordinate shot;
+		while (true) {
 			shot = p.getNextShot();
+			try {
+				if (!gs.isValid(shot, p.getPlayerNumber())) {
+					// this square was already shot
+					if (p.getPlayerNumber() == usr.getPlayerNumber())
+						Output.println("This position was already shot.");
+					continue; // try again
+				}
+			} catch (IllegalBoatSpecException e) {
+				// the coordinates are outside the grid
+				if (p.getPlayerNumber() == usr.getPlayerNumber())
+					Output.println("Please enter coordinates inside the grid!");
+				continue; // try again
+			}
+
+			break; // found a suitable block
 		}
 
 		return shot;
@@ -75,6 +89,12 @@ public class Game implements Runnable {
 		return current.getPlayerNumber() == usr.getPlayerNumber() ? cpu : usr;
 	}
 
+	private void showOutput(int currId) {
+		String title = currId == usr.getPlayerNumber() ? "OCEAN " : "TARGET ";
+		title += "GRID";
+		gs.showGrid(currId, title);
+	}
+
 	@Override
 	public void run() {
 		if (!this.initialized) {
@@ -83,19 +103,23 @@ public class Game implements Runnable {
 
 		Player curr = usr;
 		Coordinate shot;
-		while (!gs.hasWinner()) {
-			showOutput(curr);
+		showOutput(cpu.getPlayerNumber());
+		while (gs.getWinner() == -1) {
+			showOutput(curr.getPlayerNumber());
 			shot = getNextShot(curr);
 			gs.shoot(shot, curr.getPlayerNumber());
 			curr = getNextPlayer(curr);
+			if (curr.getPlayerNumber() == cpu.getPlayerNumber()) {
+				Output.clearScreen();
+			}
 		}
 
-		showOutput(usr);
+		Output.clearScreen();
 		if (gs.getWinner() == usr.getPlayerNumber()) {
-			// TODO output
-			System.out.println("Congratulations, you won!");
+			Output.println("Congratulations, you won!");
 		} else {
-			System.out.println("Better luck next time");
+			Output.println("Better luck next time.");
+			gs.showEndGrid(cpu.getPlayerNumber(), "REMAINING GRID");
 		}
 
 		initialized = false;

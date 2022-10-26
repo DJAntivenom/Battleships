@@ -5,7 +5,6 @@ public abstract class AbstractPlayer implements Player {
 
 	@Override
 	public int getPlayerNumber() {
-		// TODO Auto-generated method stub
 		return playerNumber;
 	}
 

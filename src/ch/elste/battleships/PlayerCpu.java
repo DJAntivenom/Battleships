@@ -4,13 +4,11 @@ import ch.elste.battleships.Block.BlockType;
 
 public class PlayerCpu extends AbstractPlayer {
 	private int gridsize;
-	
+
 	public PlayerCpu(int playerNumber, int gridsize) {
 		this.playerNumber = playerNumber;
 		this.gridsize = gridsize;
 	}
-	
-	
 
 	@Override
 	public Coordinate getNextShot() {
@@ -21,11 +19,21 @@ public class PlayerCpu extends AbstractPlayer {
 
 	@Override
 	public Coordinate[] getBoat(BlockType type) {
-		int x = (int) (Math.random() * (gridsize-type.length));
-		int y = (int) (Math.random() * gridsize-type.length);
+		int dir = (int) (Math.random() * 2); // 1 horizontal, 0 vertical
+		int x, y;
+		int length = type.length - 1; // the -1 is needed because to is exclusive
+
+		if (dir == 1) {
+			x = (int) (Math.random() * (gridsize - length));
+			y = (int) (Math.random() * gridsize);
+		} else {
+			x = (int) (Math.random() * gridsize);
+			y = (int) (Math.random() * (gridsize - length));
+		}
+
 		Coordinate from = new Coordinate(x, y);
-		int dir = (int) (Math.random() * 2);
-		return new Coordinate[] {from, new Coordinate(x+type.length*dir, y+type.length*(1-dir))};
+		Coordinate to = new Coordinate(x + length * dir, y + length * (1 - dir));
+		return new Coordinate[] { from, to };
 	}
 
 }

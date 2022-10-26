@@ -1,9 +1,8 @@
 package ch.elste.battleships;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import ch.elste.battleships.Block.BlockType;
+import ch.elste.battleships.Exceptions.BoatCollisionException;
+import ch.elste.battleships.Exceptions.IllegalBoatSpecException;
 
 /**
  * A grid represents a square of blocks. It provides functions to add a boat,
@@ -14,10 +13,20 @@ import ch.elste.battleships.Block.BlockType;
  */
 public class Grid {
 
+	public static final char SYMBOL_HIT = 'X';
+	public static final char SYMBOL_MISS = 'O';
+
+	public static final int BOAT_BLOCK_COUNT = 1 * 6 + 2 * 4 + 3 * 3 + 4 * 2;
+
 	/**
 	 * All blocks contained in this grid.
 	 */
 	private Block[][] data;
+
+	/**
+	 * Counts how many non-water blocks have been shot.
+	 */
+	private int hitCount;
 
 	/**
 	 * Creates a new Grid of size {@code gridsize*gridsize}.
@@ -25,7 +34,37 @@ public class Grid {
 	 * @param gridsize the side length of the grid.
 	 */
 	public Grid(int gridsize) {
+		hitCount = 0;
 		data = new Block[gridsize][gridsize];
+		for (int r = 0; r < gridsize; r++)
+			for (int c = 0; c < gridsize; c++)
+				data[r][c] = new Block();
+	}
+
+	/**
+	 * Finds the start of the Boat containing Block (x, y). If the block at (x, y)
+	 * is not part of a boat or {@code (x, y)} is outside the grid, this method's
+	 * behavior is undefined.
+	 * 
+	 * @param dir the direction to check in. 1 means horizontal, 0 means vertical.
+	 * @param x   the x coordinate of the block to check
+	 * @param y   the y coordinate of the block to check
+	 * @return the coordinate of the start block
+	 */
+	private Coordinate findStart(int dir, int x, int y) {
+		if ((dir == 1 && x == 0) || (dir == 0 && y == 0)) // we are at border => block is start
+			return new Coordinate(x, y);
+
+		while (!data[x - 1 * dir][y - 1 * (1 - dir)].isType(BlockType.WATER)) {
+			x -= 1 * dir;
+			y -= 1 * (1 - dir);
+
+			// bounds check.
+			if ((dir == 1 && x == 0) || (dir == 0 && y == 0))
+				break;
+		}
+
+		return new Coordinate(x, y);
 	}
 
 	/**
@@ -34,43 +73,31 @@ public class Grid {
 	 * 
 	 * <p>
 	 * If the block at {@code (x, y)} is of type water, the method behaves
+	 * undefined. If {@code (x, y)} is outside the grid, the method behavior is
 	 * undefined.
 	 * 
 	 * @param x first coordinate of the block to check
 	 * @param y second coordinate of the block to check
-	 * @return
+	 * @return an array of coordinates, each one corresponding to one block of the
+	 *         boat.
 	 */
 	private Coordinate[] getBoat(int x, int y) {
-		List<Coordinate> boat = new ArrayList<>(data[x][y].getType().length);
-		boat.add(new Coordinate(x, y));
+		Coordinate[] res = new Coordinate[data[x][y].getType().length];
 		int dir;
-
 		// if the boat is horizontal dir is 1
-		if (data[x + 1][y].getType() != BlockType.WATER || data[x - 1][y].getType() != BlockType.WATER)
+		if ((x < data.length - 1 && !data[x + 1][y].isType(BlockType.WATER))
+				|| (x > 0 && !data[x - 1][y].isType(BlockType.WATER)))
 			dir = 1;
 		else
 			dir = 0;
 
-		// pos is for right/up and neg is for left/down
-		int pos_ind = 1, neg_ind = 1;
+		Coordinate start = findStart(dir, x, y); // find the highest/leftest block of the boat
 
-		// check if there is more 'boat' on at least one side
-		// pos_ind * dir = 0 iff direction is vertical
-		while (data[x + pos_ind * dir][y + pos_ind * (1 - dir)].getType() != BlockType.WATER
-				|| data[x - neg_ind * dir][y + neg_ind * (1 - dir)].getType() != BlockType.WATER) {
-
-			if (data[x + pos_ind * dir][y + pos_ind * (1 - dir)].getType() != BlockType.WATER) {
-				boat.add(new Coordinate(x + pos_ind * dir, y + pos_ind * (1 - dir)));
-				pos_ind += 1;
-			}
-
-			if (data[x + neg_ind * dir][y + neg_ind * (1 - dir)].getType() != BlockType.WATER) {
-				boat.add(new Coordinate(x + neg_ind * dir, y + neg_ind * (1 - dir)));
-				neg_ind += 1;
-			}
+		for (int i = 0; i < res.length; i++) { // create the coordinates
+			res[i] = new Coordinate(start.getX() + i * dir, start.getY() + i * (1 - dir));
 		}
 
-		return (Coordinate[]) boat.toArray();
+		return res;
 	}
 
 	/**
@@ -80,20 +107,23 @@ public class Grid {
 	 * 
 	 * @param x the x coordinate of the block to check.
 	 * @param y the y coordinate of the block to check.
+	 * @return true if the boat was sunk, false otherwise.
 	 */
-	private void checkSunk(int x, int y) {
+	private boolean checkSunk(int x, int y) {
 		if (data[x][y].isType(BlockType.WATER))
-			return;
+			return false;
 
 		Coordinate[] boat = getBoat(x, y);
 		for (Coordinate c : boat) {
 			if (!data[c.getX()][c.getY()].isShot())
-				return;
+				return false;
 		}
 
 		for (Coordinate c : boat) {
 			data[c.getX()][c.getY()].setSymbol(data[c.getX()][c.getY()].getType().symbol);
 		}
+
+		return true;
 	}
 
 	/**
@@ -101,16 +131,22 @@ public class Grid {
 	 * assertion error.
 	 * 
 	 * @param c the coordinate to shoot.
+	 * @return true if the boat was sunk, false otherwise.
 	 */
-	public void shoot(Coordinate c) {
+	public boolean shoot(Coordinate c) {
 		int x = c.getX();
 		int y = c.getY();
 
 		assert !data[x][y].isShot();
 
 		data[x][y].shoot();
-		data[x][y].setSymbol(data[x][y].getType() == BlockType.WATER ? 'X' : 'O');
-		checkSunk(x, y);
+		data[x][y].setSymbol(data[x][y].isType(BlockType.WATER) ? SYMBOL_MISS : SYMBOL_HIT);
+
+		if (!data[x][y].isType(BlockType.WATER)) {
+			hitCount++;
+		}
+
+		return checkSunk(x, y);
 	}
 
 	/**
@@ -118,9 +154,14 @@ public class Grid {
 	 * 
 	 * @param c the coordinate to check
 	 * @return true if c wasn't shot before
+	 * @throws IllegalBoatSpecException if the coordinates are outside the grid.
 	 */
-	public boolean isShootable(Coordinate c) {
-		return !data[c.getX()][c.getY()].isShot();
+	public boolean isShootable(Coordinate c) throws IllegalBoatSpecException {
+		int x = c.getX();
+		int y = c.getY();
+		if (x < 0 || x >= data.length || y < 0 || y >= data[0].length)
+			throw new IllegalBoatSpecException();
+		return !data[x][y].isShot();
 	}
 
 	/**
@@ -133,28 +174,65 @@ public class Grid {
 	 * @return true if both blocks are water, false otherwise
 	 */
 	private boolean isFree(int x, int y, int dir) {
-		return data[x + 1 * dir][y + 1 * (1 - dir)].isType(BlockType.WATER)
-				&& data[x - 1 * dir][y - 1 * (1 - dir)].isType(BlockType.WATER);
+		boolean res = true;
+		if (dir == 0) { // boat is vertical
+			if (x > 0) // don't check left, if boat is at left edge
+				res = res && data[x - 1][y].isType(BlockType.WATER);
+			if (x < data.length - 1) // check right
+				res = res && data[x + 1][y].isType(BlockType.WATER);
+		} else { // boat is horizontal
+			if (y > 0)
+				res = res && data[x][y - 1].isType(BlockType.WATER); // check above
+			if (y + 1 < data[0].length)
+				res = res && data[x][y + 1].isType(BlockType.WATER); // check below
+		}
+		return res;
 	}
 
-	// checks 3 blocks left and 3 blocks right of boat to insert
+	// checks 3 blocks left and right of boat to insert. returns true if they are
+	// water
 	private boolean checkLeftRight(int x_start, int y_start, int length) {
-		return !data[x_start - 1][y_start].isType(BlockType.WATER) // check blocks left of 'leftest'
-				|| !data[x_start - 1][y_start + 1].isType(BlockType.WATER)
-				|| !data[x_start - 1][y_start - 1].isType(BlockType.WATER)
-				|| !data[x_start + length][y_start].isType(BlockType.WATER) // check blocks right of 'rightest'
-				|| !data[x_start + length][y_start + 1].isType(BlockType.WATER)
-				|| !data[x_start + length][y_start - 1].isType(BlockType.WATER);
+		boolean rightFree = true, leftFree = true;
+		if (x_start > 0) { // check blocks left of 'leftest'
+			leftFree = data[x_start - 1][y_start].isType(BlockType.WATER);
+			if (y_start > 0)
+				leftFree = leftFree && data[x_start - 1][y_start - 1].isType(BlockType.WATER);
+			if (y_start + length < data[0].length - 1)
+				leftFree = leftFree && data[x_start - 1][y_start + 1].isType(BlockType.WATER);
+		}
+
+		if (x_start + length < data.length - 1) { // check blocks right of 'rightest'
+			rightFree = data[x_start + length][y_start].isType(BlockType.WATER);
+			if (y_start > 0)
+				rightFree = rightFree && data[x_start + length][y_start - 1].isType(BlockType.WATER);
+			if (y_start + length < data[0].length - 1)
+				rightFree = rightFree && data[x_start + length][y_start + 1].isType(BlockType.WATER);
+		}
+
+		return rightFree && leftFree;
 	}
 
-	// checks 3 blocks below and above the boat to insert
+	// checks 3 blocks below and above the boat to insert. returns true if they are
+	// water
 	private boolean checkBelowAbove(int x_start, int y_start, int length) {
-		return !data[x_start][y_start - 1].isType(BlockType.WATER) // check blocks below lowest
-				|| !data[x_start - 1][y_start - 1].isType(BlockType.WATER)
-				|| !data[x_start + 1][y_start - 1].isType(BlockType.WATER)
-				|| !data[x_start][y_start + length].isType(BlockType.WATER) // check blocks above highest
-				|| !data[x_start - 1][y_start + length].isType(BlockType.WATER)
-				|| !data[x_start + 1][y_start + length].isType(BlockType.WATER);
+		boolean aboveFree = true, belowFree = true;
+		if (y_start > 0) { // check blocks below lowest
+			belowFree = data[x_start][y_start - 1].isType(BlockType.WATER);
+			if (x_start > 0)
+				belowFree = belowFree && data[x_start - 1][y_start - 1].isType(BlockType.WATER);
+			if (x_start + length < data.length - 1)
+				belowFree = belowFree && data[x_start + 1][y_start - 1].isType(BlockType.WATER);
+		}
+
+		if (y_start + length < data[0].length - 1) { // check blocks above highest
+			aboveFree = data[x_start][y_start + length].isType(BlockType.WATER);
+			if (x_start > 0)
+				aboveFree = aboveFree && data[x_start - 1][y_start + length].isType(BlockType.WATER);
+			if (x_start + length < data.length - 1)
+				aboveFree = aboveFree && data[x_start + 1][y_start + length].isType(BlockType.WATER);
+		}
+
+		return aboveFree && belowFree;
 	}
 
 	/**
@@ -176,27 +254,30 @@ public class Grid {
 	 * @param playerNumber the player this grid belongs to. Used to determine the
 	 *                     boats symbol to display.
 	 * @return true if the boat could be placed, false otherwise.
+	 * @throws BoatCollisionException if the coordinates intersect or are too close
+	 *                                to an existing boat.
 	 */
-	public boolean addBoat(Coordinate from, Coordinate to, BlockType type, int playerNumber) {
+	public void addBoat(Coordinate from, Coordinate to, BlockType type, int playerNumber)
+			throws BoatCollisionException {
 		int dir; // 0 if boat vertical, otherwise 1
-		int length = from.getDistance(to);
+		int length = from.getDistance(to) + 1;
 		int x_start = Math.min(from.getX(), to.getX());
 		int y_start = Math.min(from.getY(), to.getY());
 		if (from.getX() - to.getX() == 0) {
 			dir = 0;
 			if (!checkBelowAbove(x_start, y_start, length)) {
-				return false; // if direction is vertical, check blocks below and above boat
+				throw new BoatCollisionException(); // if direction is vertical, check blocks below and above boat
 			}
 		} else {
 			dir = 1;
 			if (!checkLeftRight(x_start, y_start, length)) {
-				return false; // if direction is horizontal, check blocks right and left of boat
+				throw new BoatCollisionException(); // if direction is horizontal, check blocks right and left of boat
 			}
 		}
 
 		for (int i = 0; i < length; i++) {
 			if (!isFree(x_start + i * dir, y_start + i * (1 - dir), dir)) {
-				return false; // check each block left/right (above/below respectively)
+				throw new BoatCollisionException(); // check each block left/right (above/below respectively)
 			}
 		}
 
@@ -204,8 +285,44 @@ public class Grid {
 			data[x_start + i * dir][y_start + i * (1 - dir)].setType(type);
 			data[x_start + i * dir][y_start + i * (1 - dir)].setSymbol(playerNumber == 0 ? type.symbol : ' ');
 		}
+	}
 
-		return true;
+	/**
+	 * Returns the type of the block at position c.
+	 * 
+	 * @param c the coordinate of the block to get the type of
+	 * @return the type at coordinate c as a BlockType
+	 */
+	public BlockType getTypeAt(Coordinate c) {
+		return data[c.getX()][c.getY()].getType();
+	}
+
+	/**
+	 * Returns the symbol of the Block at position c.
+	 * 
+	 * @param c the coordinate of the block to get the symbol of
+	 * @return the symbol at coordinate c as a char
+	 */
+	public char getSymbolAt(Coordinate c) {
+		return data[c.getX()][c.getY()].getSymbol();
+	}
+
+	/**
+	 * Returns the side-length of the grid.
+	 * 
+	 * @return the side-length of the grid
+	 */
+	public int getGridsize() {
+		return data.length;
+	}
+
+	/**
+	 * Returns the number of hit non-water blocks.
+	 * 
+	 * @return the number of hit non-water blocks
+	 */
+	public int getHitCount() {
+		return hitCount;
 	}
 
 }
